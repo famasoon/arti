@@ -172,7 +172,9 @@ impl crate::traits::UdpProvider for TokioRuntimeHandle {
 /// Create and return a new Tokio multithreaded runtime.
 pub(crate) fn create_runtime() -> IoResult<TokioRuntimeHandle> {
     let mut builder = async_executors::TokioTpBuilder::new();
+    // I/Oドライバとタイムドライバを作成する
     builder.tokio_builder().enable_all();
+    // スレッドプールを返す
     let owned = builder.build()?;
     Ok(owned.into())
 }

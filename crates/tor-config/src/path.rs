@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use tor_error::{ErrorKind, HasKind};
 
+// 設定ファイルがどこにあるか enum の値を呼び出している
 /// A path in a configuration file: tilde expansion is performed, along
 /// with expansion of certain variables.
 ///

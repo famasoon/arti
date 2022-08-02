@@ -178,6 +178,8 @@ use tracing::{info, warn};
 /// Shorthand for a boxed and pinned Future.
 type PinnedFuture<T> = std::pin::Pin<Box<dyn futures::Future<Output = T>>>;
 
+// 設定ファイルから得られた情報を基にランタイムを選ぶ
+// ここで指すランタイムは非同期ライブラリのこと
 /// Create a runtime for Arti to use.
 fn create_runtime() -> std::io::Result<impl Runtime> {
     cfg_if::cfg_if! {
@@ -190,14 +192,18 @@ fn create_runtime() -> std::io::Result<impl Runtime> {
         } else if #[cfg(all(feature="async-std", feature="rustls"))] {
             use tor_rtcompat::async_std::AsyncStdRustlsRuntime as ChosenRuntime;
         } else {
+            // 非同期ランタイムが見つからない時はコンパイル時にエラーを出す
             compile_error!("You must configure both an async runtime and a TLS stack. See doc/TROUBLESHOOTING.md for more.");
         }
     }
+    // ランタイムを作成して返します
     ChosenRuntime::create()
 }
 
 /// Return a (non-exhaustive) array of enabled Cargo features, for version printing purposes.
 fn list_enabled_features() -> &'static [&'static str] {
+    // configによって有効化された機能について文字列で返している
+    // この設定はstrの参照の配列の参照という形で返される
     // HACK(eta): We can't get this directly, so we just do this awful hack instead.
     // Note that we only list features that aren't about the runtime used, since that already
     // gets printed separately.
@@ -211,6 +217,8 @@ fn list_enabled_features() -> &'static [&'static str] {
     ]
 }
 
+// ループするところはここ
+// 先のmain_mainで解析したコマンドを基にプロキシを起動しここで処理を実施する
 /// Run the main loop of the proxy.
 ///
 /// # Panics
@@ -275,6 +283,7 @@ pub async fn run<R: Runtime>(
     )
 }
 
+// 実際に走るコードはここから読むと良さそう
 /// Inner function to allow convenient error handling
 ///
 /// # Panics
@@ -284,6 +293,7 @@ pub fn main_main() -> Result<()> {
     // We describe a default here, rather than using `default()`, because the
     // correct behavior is different depending on whether the filename is given
     // explicitly or not.
+    // デフォルトの設定ファイルを読みにいく
     let mut config_file_help = "Specify which config file(s) to read.".to_string();
     if let Ok(default) = default_config_file() {
         // If we couldn't resolve the default config file, then too bad.  If something
@@ -294,19 +304,23 @@ pub fn main_main() -> Result<()> {
 
     // We create the runtime now so that we can use its `Debug` impl to describe it for
     // the version string.
+    // 非同期ランタイムを選定して作成する。もし非同期ライブラリが何も使えなかったらpanic
     let runtime = create_runtime()?;
+    // 有効化された設定の文字列配列を取得
     let features = list_enabled_features();
     let long_version = format!(
         "{}\nusing runtime: {:?}\noptional features: {}",
-        env!("CARGO_PKG_VERSION"),
-        runtime,
+        env!("CARGO_PKG_VERSION"), // Cargo のバージョン
+        runtime,                   // ランタイム情報
         if features.is_empty() {
             "<none>".into()
         } else {
+            // 有効化された機能をカンマ区切りで返す
             features.join(", ")
         }
     );
 
+    // clap のいつもの App
     let clap_app =
         App::new("Arti")
             .version(env!("CARGO_PKG_VERSION"))
@@ -319,6 +333,7 @@ pub fn main_main() -> Result<()> {
             //            We just declare all options as `global` and then require them to be
             //            put after the subcommand, hence this new usage string.
             .usage("arti <SUBCOMMAND> [OPTIONS]")
+            // ここからはコマンドライン引数が書かれている
             .arg(
                 Arg::with_name("config-files")
                     .short("c")
@@ -367,6 +382,7 @@ pub fn main_main() -> Result<()> {
                             .value_name("PORT")
                             .help("Port to listen on for SOCKS connections (overrides the port in the config if specified).")
                     )
+                    // DNS 用のポートもあるのね
                     .arg(
                         Arg::with_name("dns-port")
                             .short("d")
@@ -395,9 +411,11 @@ pub fn main_main() -> Result<()> {
         .with_writer(pre_config_logging_writer)
         .finish();
     let pre_config_logging = tracing::Dispatch::new(pre_config_logging);
+    // 上で作ったpre_config_loggingにディスパッチしつつ設定ファイルを読み込む設定をする
     let pre_config_logging_ret = tracing::dispatcher::with_default(&pre_config_logging, || {
         let matches = clap_app.get_matches();
 
+        // fs_mistrustで信頼できるファイルかどうか確認して設定ファイルを読み取るようにする処理がこの辺に書かれている
         let fs_mistrust_disabled = matches.is_present("disable-fs-permission-checks");
 
         // A Mistrust object to use for loading our configuration.  Elsewhere, we
@@ -437,14 +455,18 @@ pub fn main_main() -> Result<()> {
     })?;
     // Sadly I don't seem to be able to persuade rustfmt to format the two lists of
     // variable names identically.
+    // 上のOkに入っている結果を取り出している
     let (matches, cfg_sources, config, client_config, log_mistrust) = pre_config_logging_ret;
 
+    // ロギングの内容を設定
     let _log_guards = logging::setup_logging(
         config.logging(),
         &log_mistrust,
         matches.value_of("loglevel"),
     )?;
 
+    // サブコマンドを解析してプロキシとかDNSプロキシの設定をしている
+    // 知らん値が来たらパニック
     if let Some(proxy_matches) = matches.subcommand_matches("proxy") {
         let socks_port = match (
             proxy_matches.value_of("socks-port"),
@@ -470,6 +492,7 @@ pub fn main_main() -> Result<()> {
         process::use_max_file_limit(&config);
 
         let rt_copy = runtime.clone();
+        // run()が実行される
         rt_copy.block_on(run(
             runtime,
             socks_port,
@@ -484,6 +507,7 @@ pub fn main_main() -> Result<()> {
     }
 }
 
+// ここでmain_mainを実行する。もしもエラーが発生したら `unwrap_or_else` でエラーをログに出す
 /// Main program, callable directly from a binary crate's `main`
 pub fn main() {
     main_main().unwrap_or_else(|e| with_safe_logging_suppressed(|| tor_error::report_and_exit(e)));

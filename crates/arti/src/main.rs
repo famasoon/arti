@@ -38,6 +38,7 @@
 #![allow(clippy::significant_drop_in_scrutinee)] // arti/-/merge_requests/588/#note_2812945
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
+// ここからコードが始まる
 fn main() {
     arti::main();
 }

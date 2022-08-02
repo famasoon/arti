@@ -372,6 +372,9 @@ impl TorClientConfigBuilder {
     }
 }
 
+// ここで設定ファイルを読み込む
+// ファイル名は `arti.toml` で固定
+// なぜならこれはデフォルトの設定ファイルを読み込むための関数だから
 /// Return a filename for the default user configuration file.
 pub fn default_config_file() -> Result<PathBuf, CfgPathError> {
     CfgPath::new("${ARTI_CONFIG}/arti.toml".into()).path()
