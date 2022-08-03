@@ -27,6 +27,7 @@ pub struct SocksHandshake {
     handshake: Option<SocksRequest>,
 }
 
+// SOCKSのハンドシェイク用のステート
 /// Possible state for a Socks connection.
 ///
 /// Each completed message advances the state.
@@ -79,6 +80,7 @@ impl SocksHandshake {
     ///
     /// On success, return an Action describing what to tell the client,
     /// and how much of its input to consume.
+    // SOCKSのハンドシェイクを実行する
     pub fn handshake(&mut self, input: &[u8]) -> TResult<Action> {
         if input.is_empty() {
             return Err(Truncated::new());
@@ -103,6 +105,8 @@ impl SocksHandshake {
                 self.state = State::Failed;
                 Ok(Err(e))
             }
+            // アクションを返す
+            // OkでOkをラップするのってあり？
             Ok(a) => Ok(Ok(a)),
         }
     }
@@ -115,6 +119,7 @@ impl SocksHandshake {
             return Err(internal!("called s4 on wrong type {:?}", version).into());
         }
 
+        // SOCKSプロトコルで必要な諸々の情報を詰め込む
         let cmd: SocksCmd = r.take_u8()?.into();
         let port = r.take_u16()?;
         let ip = r.take_u32()?;
@@ -152,10 +157,12 @@ impl SocksHandshake {
     fn s5_initial(&mut self, input: &[u8]) -> Result<Action> {
         let mut r = Reader::from_slice(input);
         let version: SocksVersion = r.take_u8()?.try_into()?;
+        // assert_eq! マクロでpanicを起こしている箇所きちんとエラー返すようにするとPR出しやすそう
         if version != SocksVersion::V5 {
             return Err(internal!("called on wrong handshake type {:?}", version).into());
         }
 
+        // SOCKS5で定義されている認証情報を一応書いている
         /// Constant for Username/Password-style authentication.
         /// (See RFC 1929)
         const USERNAME_PASSWORD: u8 = 0x02;
@@ -359,6 +366,7 @@ impl Writeable for SocksAddr {
     }
 }
 
+// SOCKS関連のテストここに書かれている
 #[cfg(test)]
 mod test {
     #![allow(clippy::unwrap_used)]

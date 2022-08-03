@@ -677,6 +677,7 @@ impl<R: Runtime> TorClient<R> {
         self.connect_with_prefs(target, &self.connect_prefs).await
     }
 
+    // ここからIPアドレスに合わせてTorの通信が実行される
     /// Launch an anonymized connection to the provided address and
     /// port over the Tor network, with explicit connection preferences.
     ///

@@ -218,6 +218,7 @@ fn list_enabled_features() -> &'static [&'static str] {
 }
 
 // ループするところはここ
+// 非同期に動いている？
 // 先のmain_mainで解析したコマンドを基にプロキシを起動しここで処理を実施する
 /// Run the main loop of the proxy.
 ///
@@ -236,19 +237,26 @@ pub async fn run<R: Runtime>(
     // for bootstrap to complete, rather than getting errors.
     use arti_client::BootstrapBehavior::OnDemand;
     use futures::FutureExt;
+    // 設定を読みつつTorクライアント起動時の挙動を確認
     let client_builder = TorClient::with_runtime(runtime.clone())
         .config(client_config)
         .bootstrap_behavior(OnDemand);
+    // Torクライアントを起動は作成するこの時点ではまだ起動していない
     let client = client_builder.create_unbootstrapped()?;
+    // 設定ファイルの変更を検知して逐次反映?
     if arti_config.application().watch_configuration {
         watch_cfg::watch_for_config_changes(config_sources, arti_config, client.clone())?;
     }
 
+    // proxy を作成する
+    // 接続ごとに上で作成したTorクライアントをクローンして隔離されたランタイムを作成している？
     let mut proxy: Vec<PinnedFuture<(Result<()>, &str)>> = Vec::new();
     if socks_port != 0 {
         let runtime = runtime.clone();
         let client = client.isolated_client();
+        // async なクロージャを実行している？
         proxy.push(Box::pin(async move {
+            // ここでプロキシを起動しポートとかマシンにバインドさせる
             let res = socks::run_socks_proxy(runtime, client, socks_port).await;
             (res, "SOCKS")
         }));
@@ -493,6 +501,7 @@ pub fn main_main() -> Result<()> {
 
         let rt_copy = runtime.clone();
         // run()が実行される
+        // rt_copyのスレッドがブロックされる？
         rt_copy.block_on(run(
             runtime,
             socks_port,

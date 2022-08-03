@@ -18,6 +18,7 @@ use tor_socksproto::{SocksAddr, SocksAuth, SocksCmd, SocksRequest};
 
 use anyhow::{anyhow, Context, Result};
 
+// HTTP プロキシじゃなくて SOCKS プロキシとして使えよという内容
 /// Paylod to return when an HTTP connection arrive on a Socks port
 const WRONG_PROTOCOL_PAYLOAD: &[u8] = br#"HTTP/1.0 501 Tor is not an HTTP Proxy
 Content-Type: text/html; charset=utf-8
@@ -44,6 +45,7 @@ See <a href="https://gitlab.torproject.org/tpo/core/arti/#todo-need-to-change-wh
 </body>
 </html>"#;
 
+// SOCKS で使用するIPアドレスの分類を返す
 /// Find out which kind of address family we can/should use for a
 /// given `SocksRequest`.
 pub fn stream_preference(req: &SocksRequest, addr: &str) -> StreamPrefs {
@@ -55,6 +57,7 @@ pub fn stream_preference(req: &SocksRequest, addr: &str) -> StreamPrefs {
         // If they asked for an IPv6 address correctly, nothing else will do.
         prefs.ipv6_only();
     } else if req.version() == tor_socksproto::SocksVersion::V4 {
+        // SOCKS4はIPv4しかサポートしていないのでipv4オンリー
         // SOCKS4 and SOCKS4a only support IPv4
         prefs.ipv4_only();
     } else {
@@ -114,6 +117,7 @@ where
     let (mut socks_r, mut socks_w) = socks_stream.split();
     let mut inbuf = [0_u8; 1024];
     let mut n_read = 0;
+    // 中でハンドシェイクしながらリクエストを受け取るまでループする
     let request = loop {
         // Read some more stuff.
         n_read += socks_r
@@ -141,6 +145,8 @@ where
             Ok(Ok(action)) => action,
         };
 
+        // ハンドシェイクが終わったら以下の内容を実施
+        // 見た感じ action に入っている内容を取り出している
         // reply if needed.
         if action.drain > 0 {
             inbuf.copy_within(action.drain..action.drain + n_read, 0);
@@ -153,6 +159,7 @@ where
             break handshake.into_request();
         }
     };
+    // ハンドシェイクの情報を取り出す
     let request = match request {
         Some(r) => r,
         None => {
@@ -161,6 +168,7 @@ where
         }
     };
 
+    // リクエストの中のアドレスとポートを取り出す
     // Unpack the socks request and find out where we're connecting to.
     let addr = request.addr().to_string();
     let port = request.port();
@@ -171,6 +179,7 @@ where
         port
     );
 
+    // 認証情報に元アドレスにリスナーIDを取得する
     // Use the source address, SOCKS authentication, and listener ID
     // to determine the stream's isolation properties.  (Our current
     // rule is that two streams may only share a circuit if they have
@@ -178,10 +187,12 @@ where
     let auth = request.auth().clone();
     let (source_address, ip) = isolation_info;
 
+    // IPv4/IPv6 を使用するか確認し状況に応じて設定する
     // Determine whether we want to ask for IPv4/IPv6 addresses.
     let mut prefs = stream_preference(&request, &addr);
     prefs.set_isolation(SocksIsolationKey(source_address, ip, auth));
 
+    // SOCKSコマンドに応じて処理を分けている
     match request.command() {
         SocksCmd::CONNECT => {
             // The SOCKS request wants us to connect to a given address.
@@ -193,9 +204,11 @@ where
                 Ok(s) => s,
                 Err(e) => return reply_error(&mut socks_w, &request, e).await,
             };
+            // Torネットワークへの接続が確立したらここに到達
             // Okay, great! We have a connection over the Tor network.
             info!("Got a stream for {}:{}", sensitive(&addr), port);
 
+            // SOCKS通信の確立を伝える
             // Send back a SOCKS response, telling the client that it
             // successfully connected.
             let reply = request
@@ -203,8 +216,10 @@ where
                 .context("Encoding socks reply")?;
             write_all_and_flush(&mut socks_w, &reply[..]).await?;
 
+            // Torネットワークのリーダー/ライターを取り出す
             let (tor_r, tor_w) = tor_stream.split();
 
+            // SOCKS通信とTor通信用の二つのリレー通信用のタスクを作成する
             // Finally, spawn two background tasks to relay traffic between
             // the socks stream and the tor stream.
             runtime.spawn(copy_interactive(socks_r, tor_w).map(|_| ()))?;
@@ -264,6 +279,8 @@ where
         }
     };
 
+    // https://users.rust-lang.org/t/how-to-close-tcp-connection-when-using-tokio/66533
+    // この辺の情報使える?
     // TODO: we should close the TCP stream if either task fails. Do we?
     // See #211 and #190.
 
@@ -428,15 +445,18 @@ pub async fn run_socks_proxy<R: Runtime>(
                 info!("Listening on {:?}.", addr);
                 listeners.push(listener);
             }
+            // 特定のポートにバインドできなかったらここでwarn
             Err(e) => warn!("Can't listen on {:?}: {}", addr, e),
         }
     }
+    // バインドできなかったらここでエラーを返す
     // We weren't able to bind any ports: There's nothing to do.
     if listeners.is_empty() {
         error!("Couldn't open any SOCKS listeners.");
         return Err(anyhow!("Couldn't open SOCKS listeners"));
     }
 
+    // リスナーIDと接続を試みるソケットのペアを作成する(クロージャの中でクロージャを呼んでいてよくわからん)
     // Create a stream of (incoming socket, listener_id) pairs, selected
     // across all the listeners.
     let mut incoming = futures::stream::select_all(
@@ -463,6 +483,7 @@ pub async fn run_socks_proxy<R: Runtime>(
                 }
             }
         };
+        // ここでTorクライアントとランタイムをクローンして非同期クロージャでhandle_socks_connにTCP接続の内容を渡している
         let client_ref = tor_client.clone();
         let runtime_copy = runtime.clone();
         runtime.spawn(async move {

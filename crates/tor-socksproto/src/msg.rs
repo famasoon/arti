@@ -29,6 +29,7 @@ impl TryFrom<u8> for SocksVersion {
     }
 }
 
+// SOCKS v4 のリクエスト構造体
 /// A completed SOCKS request, as negotiated on a SOCKS connection.
 ///
 /// Once this request is done, we know where to connect.  Don't
@@ -73,6 +74,7 @@ pub struct SocksHostname(String);
 pub enum SocksAuth {
     /// No authentication was provided
     NoAuth,
+    // とりあえずユーザネームを入れる
     /// Socks4 authentication (a string) was provided.
     Socks4(Vec<u8>),
     /// Socks5 username/password authentication was provided.
@@ -80,6 +82,10 @@ pub enum SocksAuth {
 }
 
 caret_int! {
+    // SOCKSの命令
+    // こんなのあるのか知らなかった
+    // Not supported in Tor なコマンドには要注意
+    // と言ってもUDPとか取り扱わないのは知っていたけど
     /// Command from the socks client telling us what to do.
     pub struct SocksCmd(u8) {
         /// Connect to a remote TCP address:port.
@@ -185,15 +191,18 @@ impl SocksRequest {
         port: u16,
         auth: SocksAuth,
     ) -> Result<Self> {
+        // 有効なSOCKコマンドか確認
         if !cmd.recognized() {
             return Err(Error::NotImplemented(
                 format!("SOCKS command {}", cmd).into(),
             ));
         }
+        // ポートも有効か確認
         if port == 0 && cmd.requires_port() {
             return Err(Error::Syntax);
         }
 
+        // 問題なければリクエスト構造体を返す
         Ok(SocksRequest {
             version,
             cmd,
