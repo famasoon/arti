@@ -861,6 +861,7 @@ impl<R: Runtime> TorClient<R> {
         prefs: &StreamPrefs,
     ) -> StdResult<ClientCirc, ErrorDetail> {
         self.wait_for_bootstrap().await?;
+        // ここでTorノードのDirの情報を得ている
         let dir = self.netdir(Timeliness::Timely, "build a circuit")?;
 
         let isolation = {
