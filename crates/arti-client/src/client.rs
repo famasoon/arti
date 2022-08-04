@@ -852,6 +852,7 @@ impl<R: Runtime> TorClient<R> {
         }
     }
 
+    // exitノードについての情報を取得する
     /// Get or launch an exit-suitable circuit with a given set of
     /// exit ports.
     async fn get_or_launch_exit_circ(
