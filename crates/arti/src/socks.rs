@@ -48,7 +48,8 @@ See <a href="https://gitlab.torproject.org/tpo/core/arti/#todo-need-to-change-wh
 // SOCKS で使用するIPアドレスの分類を返す
 /// Find out which kind of address family we can/should use for a
 /// given `SocksRequest`.
-pub fn stream_preference(req: &SocksRequest, addr: &str) -> StreamPrefs {
+#[cfg_attr(feature = "experimental-api", visibility::make(pub))]
+fn stream_preference(req: &SocksRequest, addr: &str) -> StreamPrefs {
     let mut prefs = StreamPrefs::new();
     if addr.parse::<Ipv4Addr>().is_ok() {
         // If they asked for an IPv4 address correctly, nothing else will do.
@@ -427,7 +428,8 @@ fn accept_err_is_fatal(err: &IoError) -> bool {
 /// Requires a `runtime` to use for launching tasks and handling
 /// timeouts, and a `tor_client` to use in connecting over the Tor
 /// network.
-pub async fn run_socks_proxy<R: Runtime>(
+#[cfg_attr(feature = "experimental-api", visibility::make(pub))]
+pub(crate) async fn run_socks_proxy<R: Runtime>(
     runtime: R,
     tor_client: TorClient<R>,
     socks_port: u16,
