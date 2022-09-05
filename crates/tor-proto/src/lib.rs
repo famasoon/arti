@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg))]
 //! Implementations for the core Tor protocol
 //!
 //! # Overview
@@ -143,7 +144,7 @@ mod util;
 pub use util::err::{Error, ResolveError};
 pub use util::skew::ClockSkew;
 
-pub use channel::params::ChannelsParams;
+pub use channel::params::ChannelPaddingInstructions;
 
 /// A Result type for this crate.
 pub type Result<T> = std::result::Result<T, Error>;
